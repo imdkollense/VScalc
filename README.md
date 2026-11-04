@@ -32,7 +32,8 @@ node build.js && node test/calc.test.js
 ## Version 4
 - Beteckningsformat "sektioner-höjd-serie" (t.ex. "52-44-MP") som på äldre ritningar.
 - OCR med tesseract.js (jsdelivr) för inskannade PDF:er och bilder: två pass (planbild + skarpare rendering) slås ihop. Knappen "Läs beteckningar" kör om avläsningen.
-- Beteckningar utanför fasaden kopplas till närmaste rum inom 4 m (streckad linje visar kopplingen).
+- Beteckningar utanför fasaden kopplas till närmaste rum inom 4 m (streckad linje visar kopplingen) och räknas om när fler rum ritas.
+- Till- och frånluft per rum (m³/h). "+" = uteluftsdon (uteluft = frånluften), "−" = ingen tilluft (överluft), tal = mekanisk tilluft. Etiketter som "+/45" och "-/80" läses av från ritningen och fylls i när rummet ritas. Infiltration läggs till separat.
 
 ## Planerat
 - Automatisk rumsidentifiering från planritning (bildanalys).
