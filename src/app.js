@@ -11,7 +11,7 @@
     dvut: -18, tIn: 21, height: 2.5,
     uWall: 0.6, uWindow: 2.8, uDoor: 2.0, uRoof: 0.3, uFloor: 0.5,
     tGround: 8, tBasement: 10, tCrawl: 0,
-    airChanges: 0.5, heatRecovery: 0, thermalBridge: 0.1,
+    airChanges: 0.5, infiltration: 0.1, heatRecovery: 0, thermalBridge: 0.1,
     above: 'vind', below: 'kallare',
     tf: 70, trDesign: 50, dpKPa: 10,
     calcMode: 'dt', dtWater: 15, tempMethod: 'aritmetisk', valveSensor: 'Max', flowMargin: 0,
@@ -71,7 +71,7 @@
     const s = P.settings;
     const g = roomGeom(room);
     const calcRoom = {
-      area: g.area, walls: g.walls, tIn: room.tIn, height: room.height, airChanges: room.airChanges,
+      area: g.area, walls: g.walls, tIn: room.tIn, height: room.height, airChanges: room.airChanges, supply: room.supply, exhaust: room.exhaust,
       above: room.above || s.above, below: room.below || s.below,
     };
     const loss = C.roomHeatLoss(calcRoom, s);
@@ -278,8 +278,8 @@
     const name = await ask('Rummets namn:', `Rum ${P.rooms.length + 1}`);
     if (name === null) return;
     const room = { id: uid(), name: name || `Rum ${P.rooms.length + 1}`, pts: pts.map(p => ({ x: p.x, y: p.y })),
-      edges: pts.map(() => ({ exterior: false, windowArea: 0, doorArea: 0 })), tIn: '', height: '', airChanges: '', above: '', below: '' };
-    P.rooms.push(room); selRoom = room.id; assignRadiators(); changed();
+      edges: pts.map(() => ({ exterior: false, windowArea: 0, doorArea: 0 })), tIn: '', height: '', airChanges: '', supply: '', exhaust: '', above: '', below: '' };
+    P.rooms.push(room); selRoom = room.id; assignRadiators(); applyAirLabels(); changed();
   }
   /** Kopplar radiatorer utan (giltigt) rum till det rum de ligger i. */
   // Beteckningar står ofta utanför fasaden (ovanför/under radiatorn): koppla till närmaste rum inom detta avstånd.
@@ -287,7 +287,8 @@
   function assignRadiators() {
     let n = 0;
     for (const rad of P.radiators) {
-      if (rad.roomId && P.rooms.some(r => r.id === rad.roomId)) continue;
+      // Avlästa radiatorer utanför rum räknas om varje gång (ett nyritat rum kan ligga närmare)
+      if (rad.roomId && P.rooms.some(r => r.id === rad.roomId) && !rad.auto) continue;
       let room = P.rooms.find(r => C.pointInPolygon(rad, r.pts));
       if (!room && rad.auto) {
         let bd = ASSIGN_MAX_M * P.plan.pxPerM;
@@ -390,7 +391,10 @@
       <label class="f">Namn<input data-r="name" value="${esc(room.name)}"></label>
       <label class="f">Rumstemp °C<input data-r="tIn" type="number" step="0.5" placeholder="${s.tIn}" value="${esc(room.tIn)}"></label>
       <label class="f">Rumshöjd m<input data-r="height" type="number" step="0.05" placeholder="${s.height}" value="${esc(room.height)}"></label>
-      <label class="f">Luftomsättning oms/h<input data-r="airChanges" type="number" step="0.1" placeholder="${s.airChanges}" value="${esc(room.airChanges)}"></label>
+      <label class="f" title="Tal = tilluft m³/h, + = uteluftsdon (uteluft = frånluften), − = ingen tilluft (överluft)">Tilluft m³/h (+ / −)<input data-r="supply" placeholder="tomt" value="${esc(room.supply ?? '')}"></label>
+      <label class="f">Frånluft m³/h<input data-r="exhaust" type="number" step="1" min="0" placeholder="tomt" value="${esc(room.exhaust ?? '')}"></label>
+      ${room.airRaw ? `<p class="note">Luftflöde avläst från ritningen: "${esc(room.airRaw)}"</p>` : ''}
+      <label class="f">Luftomsättning oms/h<input data-r="airChanges" type="number" step="0.1" placeholder="${s.airChanges}" value="${esc(room.airChanges)}"${String(room.supply ?? '') !== '' || String(room.exhaust ?? '') !== '' ? ' disabled title="Används inte när luftflöden är angivna"' : ''}></label>
       <label class="f">Ovanför<select data-r="above">${opts(ABOVE, room.above)}</select></label>
       <label class="f">Under<select data-r="below">${opts(BELOW, room.below)}</select></label>
       <p class="note">Golvarea ${fmt(r.geom.area, 1)} m² · volym ${fmt(r.loss.volume, 1)} m³</p>
@@ -520,7 +524,7 @@
     ['Klimat', [['dvut', 'DVUT (dim. utetemp) °C', 1], ['tIn', 'Rumstemperatur °C', 0.5], ['height', 'Rumshöjd m', 0.05]]],
     ['U-värden W/m²K', [['uWall', 'Yttervägg', 0.01], ['uWindow', 'Fönster', 0.01], ['uDoor', 'Ytterdörr', 0.01], ['uRoof', 'Tak / vindsbjälklag', 0.01], ['uFloor', 'Golv', 0.01], ['thermalBridge', 'Köldbryggetillägg (andel, 0,1 = 10 %)', 0.01]]],
     ['Temperatur under golv °C', [['tGround', 'Mark (platta)', 1], ['tBasement', 'Ouppvärmd källare', 1], ['tCrawl', 'Kryprum', 1]]],
-    ['Ventilation', [['airChanges', 'Luftomsättning oms/h (inkl. läckage)', 0.05], ['heatRecovery', 'Värmeåtervinning (andel 0–1)', 0.05]]],
+    ['Ventilation', [['airChanges', 'Luftomsättning oms/h (rum utan angivna luftflöden)', 0.05], ['infiltration', 'Infiltration oms/h (rum med angivna luftflöden)', 0.05], ['heatRecovery', 'Värmeåtervinning på tilluft (andel 0–1)', 0.05]]],
     ['Beräkningsmetod', [
       ['calcMode', 'Metod', { dt: 'Fast ΔT vatten → beräkna tillopp/retur (Strandskatan)', tf: 'Fast framledning → beräkna retur' }],
       ['dtWater', 'ΔT vatten K (metod ΔT)', 0.5],
@@ -539,7 +543,7 @@
       ? `<label class="f">${l}<select data-set="${k}" data-kind="str">${Object.entries(st).map(([v, t]) => `<option value="${esc(v)}"${P.settings[k] === v ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select></label>`
       : `<label class="f">${l}<input type="number" step="${st}" data-set="${k}" value="${P.settings[k]}"></label>`;
     $('#settingsForm').innerHTML = FIELDS.map(([title, f]) => `<div class="panel"><h2>${title}</h2>${f.map(field).join('')}</div>`).join('') +
-      `<div class="panel"><h2>Om beräkningen</h2><p class="note">Transmission: U·A·(t<sub>inne</sub> − DVUT) för yttervägg (minus fönster/dörr), fönster och tak när kall vind/yttertak finns ovanför. Golv räknas mot angiven temperatur under. Ventilation: 1,2·q·Δt·(1 − återvinning), q = oms/h · volym.</p>
+      `<div class="panel"><h2>Om beräkningen</h2><p class="note">Transmission: U·A·(t<sub>inne</sub> − DVUT) för yttervägg (minus fönster/dörr), fönster och tak när kall vind/yttertak finns ovanför. Golv räknas mot angiven temperatur under. Ventilation: 1,2·q·Δt. q = tilluft (med återvinning), frånluft vid uteluftsdon (+), 0 vid överluft (−), plus infiltration. Utan angivna flöden: q = oms/h · volym.</p>
       <p class="note">Radiatoreffekt: P = P<sub>kat</sub>·(Δθ / Δθ<sub>ref</sub>)<sup>n</sup>, Δθ<sub>ref</sub> = 60 K vid 90/70/20. Metod ΔT: behövd Δθ = Δθ<sub>ref</sub>·(P<sub>behov</sub>/P<sub>kat</sub>)<sup>1/n</sup>, tillopp = Δθ + t<sub>rum</sub> + ΔT/2, retur = tillopp − ΔT. Flöde = P / (ΔT · 4,2 · 1000) · 3600 l/h.</p>
       <p class="note">kv = q[m³/h] / √(Δp[bar]). RA-DV PURE: lägsta inställning vars flöde ≥ behovet inkl. marginal (Danfoss datablad 12/2025; halvsteg interpolerade).</p></div>`;
     document.querySelectorAll('[data-set]').forEach(i => i.addEventListener('change', () => {
@@ -628,6 +632,29 @@
     }
   }
 
+  // ---------- Luftflödesetiketter ("+/45" = tilluft/frånluft m³/h) ----------
+  /** Luftflöden i en textrad som inte överlappar radiatorbeteckningar. pos(index) ger planposition. */
+  function airLabelsIn(text, designations, pos) {
+    const busy = designations.map(m => [m.index, m.index + m.length]);
+    return C.findAirflows(text).filter(a => !busy.some(([x, y]) => a.index < y && a.index + a.length > x))
+      .map(a => Object.assign(pos(a.index + a.length / 2), { supply: a.supply, exhaust: a.exhaust, raw: a.raw }));
+  }
+  function addAirLabels(list) {
+    P.plan.airLabels = P.plan.airLabels || [];
+    const tol = 0.4 * P.plan.pxPerM;
+    for (const a of list) if (!P.plan.airLabels.some(b => Math.hypot(a.x - b.x, a.y - b.y) < tol)) P.plan.airLabels.push(a);
+  }
+  /** Fyller i till-/frånluft för rum som saknar värden, från avlästa etiketter inuti rummet. */
+  function applyAirLabels() {
+    let n = 0;
+    for (const room of P.rooms) {
+      if (String(room.supply ?? '') !== '' || String(room.exhaust ?? '') !== '') continue;
+      const a = (P.plan.airLabels || []).find(l => C.pointInPolygon(l, room.pts));
+      if (a) { room.supply = a.supply; room.exhaust = a.exhaust; room.airRaw = a.raw; n++; }
+    }
+    return n;
+  }
+
   // ---------- OCR (inskannade ritningar) ----------
   const TESS = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/';
   const TESS_LANG = 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng@1.0.0/4.0.0_best_int';
@@ -647,14 +674,16 @@
         logger: m => { if (m.status === 'recognizing text') hint(`Läser av radiatorbeteckningar … ${Math.round((pass + m.progress) / sources.length * 100)} %`); },
       });
       await worker.setParameters({ tessedit_pageseg_mode: '11' }); // gles text, som på ritningar
-      const found = [];
+      const found = [], airs = [];
       for (const src of sources) {
       const { data } = await worker.recognize(src.img);
       pass++;
       for (const line0 of data.lines || []) {
         const line = { text: line0.text, bbox: { x0: line0.bbox.x0 / src.k, x1: line0.bbox.x1 / src.k, y0: line0.bbox.y0 / src.k, y1: line0.bbox.y1 / src.k } };
         const text = line.text.replace(/\n/g, ' ');
-        for (const m of C.findDesignations(text, P.db)) {
+        const des = C.findDesignations(text, P.db);
+        airs.push(...airLabelsIn(text, des, i => ({ x: line.bbox.x0 + (line.bbox.x1 - line.bbox.x0) * i / Math.max(1, text.length), y: (line.bbox.y0 + line.bbox.y1) / 2 })));
+        for (const m of des) {
           const b = line.bbox, w = b.x1 - b.x0;
           const x = b.x0 + w * (m.index + m.length / 2) / Math.max(1, text.length);
           const y = (b.y0 + b.y1) / 2;
@@ -665,10 +694,12 @@
       }
       }
       P.radiators.push(...found);
-      assignRadiators(); changed();
-      hint(found.length
+      addAirLabels(airs);
+      assignRadiators(); applyAirLabels(); changed();
+      const airTxt = airs.length ? ` ${P.plan.airLabels.length} luftflöden (till/från) hittades och fylls i när rummen ritas.` : '';
+      hint((found.length
         ? `${found.length} radiatorbeteckningar avlästa med textigenkänning (orange). Kontrollera dem mot ritningen – handskrivna noteringar läses inte. Klicka på en markering för att ändra.`
-        : 'Inga radiatorbeteckningar hittades med textigenkänning. Placera radiatorerna manuellt.');
+        : 'Inga radiatorbeteckningar hittades med textigenkänning. Placera radiatorerna manuellt.') + airTxt);
     } catch (e) {
       hint('Textigenkänningen kunde inte köras här (' + (e && e.message || e) + '). Placera radiatorerna manuellt.');
     } finally {
@@ -698,7 +729,9 @@
       l.items.sort((a, b) => a.x - b.x);
       let text = '', map = [];
       for (const it of l.items) { if (text) { text += ' '; map.push(it); } for (const _ of it.str) map.push(it); text += it.str; }
-      for (const m of C.findDesignations(text, P.db)) {
+      const des = C.findDesignations(text, P.db);
+      addAirLabels(airLabelsIn(text, des, i => { const it = map[Math.floor(i)] || l.items[0]; return { x: it.x + (it.w || 0) / 2, y: it.y - it.h / 2 }; }));
+      for (const m of des) {
         const it = map[m.index] || l.items[0];
         out.push({ id: uid(), roomId: null, x: it.x + (it.w || 0) / 2, y: it.y - it.h / 2, dbId: m.dbId, qty: m.qty, count: m.count, dpKPa: '', auto: true, raw: m.raw });
       }
