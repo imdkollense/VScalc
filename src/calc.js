@@ -22,6 +22,19 @@
     return Math.abs(a) / 2;
   }
   function dist(p, q) { return Math.hypot(q.x - p.x, q.y - p.y); }
+  /** Närmaste punkt på polygonens kant och avståndet dit. */
+  function nearestOnPolygon(pt, pts) {
+    let best = { x: pts[0].x, y: pts[0].y, d: Infinity };
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length];
+      const dx = b.x - a.x, dy = b.y - a.y, L = dx * dx + dy * dy;
+      const t = L ? Math.max(0, Math.min(1, ((pt.x - a.x) * dx + (pt.y - a.y) * dy) / L)) : 0;
+      const q = { x: a.x + t * dx, y: a.y + t * dy };
+      const d = Math.hypot(pt.x - q.x, pt.y - q.y);
+      if (d < best.d) best = { x: q.x, y: q.y, d };
+    }
+    return best;
+  }
   function pointInPolygon(pt, pts) {
     let inside = false;
     for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
@@ -243,20 +256,26 @@
     if (!series.length) return [];
     const re = new RegExp('(?<![A-Za-zÅÄÖåäö0-9])(?:(\\d{1,2})\\s*(?:st|x|×|\\*)\\s*)?(' + series.join('|') +
       ')\\s*[-.]?\\s*(\\d{2,3})(?:\\s*(?:[-\\/x×*:]|\\s)\\s*(\\d{1,3})(?!\\d)(?:\\s*(?:sekt|s)\\b\\.?)?)?', 'gi');
+    // Äldre ritningar: "sektioner - höjd - serie", t.ex. "52-44-MP" (även OCR-varianter av bindestreck)
+    const D = '\\s*[-–—~=.]+\\s*';
+    const reRev = new RegExp('(?<![A-Za-zÅÄÖåäö0-9])(\\d{1,3})' + D + '(\\d{2,3})' + D + '(' + series.join('|') + ')(?![A-Za-zÅÄÖåäö0-9])', 'gi');
     const out = [];
+    const taken = [];
+    const free = (i, len) => !taken.some(([a, b]) => i < b && i + len > a);
+    const push = (m, series, height, qty, count) => {
+      const d = byKey.get((series + '|' + height).toUpperCase().replace(/\s/g, ''));
+      if (!d || !free(m.index, m[0].length)) return;
+      taken.push([m.index, m.index + m[0].length]);
+      out.push({ index: m.index, length: m[0].length, raw: m[0].trim(), dbId: d.id, qty, count });
+    };
     let m;
-    while ((m = re.exec(text))) {
-      const key = (m[2] + '|' + m[3]).toUpperCase().replace(/\s/g, '');
-      const d = byKey.get(key);
-      if (!d) continue;
-      out.push({ index: m.index, length: m[0].length, raw: m[0].trim(), dbId: d.id,
-        qty: m[4] ? parseInt(m[4], 10) : null, count: m[1] ? parseInt(m[1], 10) : 1 });
-    }
-    return out;
+    while ((m = reRev.exec(text))) push(m, m[3], m[2], parseInt(m[1], 10), 1);
+    while ((m = re.exec(text))) push(m, m[2], m[3], m[4] ? parseInt(m[4], 10) : null, m[1] ? parseInt(m[1], 10) : 1);
+    return out.sort((x, y) => x.index - y.index);
   }
 
   function num(v, d) { const x = parseFloat(v); return isFinite(x) ? x : d; }
 
-  return { polygonArea, dist, pointInPolygon, roomHeatLoss, lmtd, meanDiff, nominalPower, radiatorOutput,
+  return { polygonArea, dist, pointInPolygon, nearestOnPolygon, roomHeatLoss, lmtd, meanDiff, nominalPower, radiatorOutput,
     requiredFlow, requiredTempsAtDt, flowFor, valveSetting, RADV_PURE, kv, roomBalance, parseRadiatorCsv, findDesignations, WATER_KJ_PER_LK };
 });

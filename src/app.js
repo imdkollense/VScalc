@@ -144,6 +144,11 @@
     const rs = 7 * pxPerScreen();
     for (const rad of P.radiators) {
       const d = P.db.find(x => x.id === rad.dbId);
+      const home = rad.roomId && P.rooms.find(r => r.id === rad.roomId);
+      if (home && !C.pointInPolygon(rad, home.pts)) {
+        const q = C.nearestOnPolygon(rad, home.pts);
+        el('line', { x1: rad.x, y1: rad.y, x2: q.x, y2: q.y, class: 'radlink' }, svg);
+      }
       const cls = 'rad' + (!rad.roomId ? ' unassigned' : '') + (d && d.unit !== 'st' && !(parseFloat(rad.qty) > 0) ? ' incomplete' : '');
       const rect = el('rect', { x: rad.x - rs * 1.6, y: rad.y - rs / 2, width: rs * 3.2, height: rs, rx: rs / 4, class: cls }, svg);
       const tt = el('title', {}, rect);
@@ -277,11 +282,17 @@
     P.rooms.push(room); selRoom = room.id; assignRadiators(); changed();
   }
   /** Kopplar radiatorer utan (giltigt) rum till det rum de ligger i. */
+  // Beteckningar står ofta utanför fasaden (ovanför/under radiatorn): koppla till närmaste rum inom detta avstånd.
+  const ASSIGN_MAX_M = 4;
   function assignRadiators() {
     let n = 0;
     for (const rad of P.radiators) {
       if (rad.roomId && P.rooms.some(r => r.id === rad.roomId)) continue;
-      const room = P.rooms.find(r => C.pointInPolygon(rad, r.pts));
+      let room = P.rooms.find(r => C.pointInPolygon(rad, r.pts));
+      if (!room && rad.auto) {
+        let bd = ASSIGN_MAX_M * P.plan.pxPerM;
+        for (const r of P.rooms) { const q = C.nearestOnPolygon(rad, r.pts); if (q.d < bd) { bd = q.d; room = r; } }
+      }
       rad.roomId = room ? room.id : null; if (room) n++;
     }
     return n;
@@ -598,7 +609,7 @@
     await page.render({ canvasContext: ctx, viewport: vp }).promise;
     const found = await readDesignations(page, vp);
     // PDF-enheter är punkter (1 pt = 25,4/72 mm på papperet). Med känd ritningsskala ges px/m direkt.
-    const a = await ask('Ritningens skala 1: (t.ex. 100). Lämna tomt för att kalibrera själv med två punkter. Gäller bara om PDF:en är i originalstorlek, inte inskannad i annan storlek.', '100');
+    const a = await ask('Ritningens skala 1: (t.ex. 50 eller 100). Lämna tomt för att kalibrera själv med två punkter. Gäller bara om PDF:en är i originalstorlek, inte inskannad i annan storlek.', '100');
     const denom = parseFloat(String(a || '').replace(',', '.'));
     const pxPerM = denom > 0 ? (1000 / denom) / (25.4 / 72) * scale : null;
     if (found.length) {
@@ -607,8 +618,65 @@
     }
     setPlanFromCanvas(cv, pxPerM);
     if (found.length) hint(`${found.length} radiatorbeteckningar avlästa ur ritningen (orange markeringar). Kontrollera dem – klicka på en markering för att ändra. ` + $('#hint').textContent);
-    else hint('Inga radiatorbeteckningar hittades i PDF:ens text. ' + $('#hint').textContent);
+    else {
+      // Inskannad ritning utan textlager: OCR på planbilden och på en skarpare rendering, resultaten slås ihop
+      const k = 1.6, vpHi = page.getViewport({ scale: scale * k });
+      const hi = document.createElement('canvas'); hi.width = Math.round(vpHi.width); hi.height = Math.round(vpHi.height);
+      const hctx = hi.getContext('2d'); hctx.fillStyle = '#fff'; hctx.fillRect(0, 0, hi.width, hi.height);
+      await page.render({ canvasContext: hctx, viewport: vpHi }).promise;
+      await runOcr([{ img: cv, k: 1 }, { img: hi, k }]);
+    }
   }
+
+  // ---------- OCR (inskannade ritningar) ----------
+  const TESS = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/';
+  const TESS_LANG = 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng@1.0.0/4.0.0_best_int';
+  let ocrBusy = false;
+  /** Textigenkänning på ritningsbilden; lägger till radiatorer för hittade beteckningar. */
+  async function runOcr(sources) {
+    if (ocrBusy) return;
+    if (!P.plan.image && !sources) { hint('Ladda en ritning först.'); return; }
+    sources = sources || [{ img: P.plan.image, k: 1 }];
+    ocrBusy = true; $('#btnOcr').disabled = true;
+    let worker = null, pass = 0;
+    try {
+      hint('Läser av radiatorbeteckningar med textigenkänning … laddar OCR (första gången kan ta en stund).');
+      if (!window.Tesseract) await loadScript(TESS + 'tesseract.min.js');
+      worker = await window.Tesseract.createWorker('eng', 1, {
+        workerPath: TESS + 'worker.min.js', langPath: TESS_LANG, gzip: true,
+        logger: m => { if (m.status === 'recognizing text') hint(`Läser av radiatorbeteckningar … ${Math.round((pass + m.progress) / sources.length * 100)} %`); },
+      });
+      await worker.setParameters({ tessedit_pageseg_mode: '11' }); // gles text, som på ritningar
+      const found = [];
+      for (const src of sources) {
+      const { data } = await worker.recognize(src.img);
+      pass++;
+      for (const line0 of data.lines || []) {
+        const line = { text: line0.text, bbox: { x0: line0.bbox.x0 / src.k, x1: line0.bbox.x1 / src.k, y0: line0.bbox.y0 / src.k, y1: line0.bbox.y1 / src.k } };
+        const text = line.text.replace(/\n/g, ' ');
+        for (const m of C.findDesignations(text, P.db)) {
+          const b = line.bbox, w = b.x1 - b.x0;
+          const x = b.x0 + w * (m.index + m.length / 2) / Math.max(1, text.length);
+          const y = (b.y0 + b.y1) / 2;
+          const near = r => Math.hypot(r.x - x, r.y - y) < 0.6 * P.plan.pxPerM;
+          if (P.radiators.some(near) || found.some(near)) continue; // redan avläst
+          found.push({ id: uid(), roomId: null, x, y, dbId: m.dbId, qty: m.qty, count: m.count, dpKPa: '', auto: true, raw: m.raw });
+        }
+      }
+      }
+      P.radiators.push(...found);
+      assignRadiators(); changed();
+      hint(found.length
+        ? `${found.length} radiatorbeteckningar avlästa med textigenkänning (orange). Kontrollera dem mot ritningen – handskrivna noteringar läses inte. Klicka på en markering för att ändra.`
+        : 'Inga radiatorbeteckningar hittades med textigenkänning. Placera radiatorerna manuellt.');
+    } catch (e) {
+      hint('Textigenkänningen kunde inte köras här (' + (e && e.message || e) + '). Placera radiatorerna manuellt.');
+    } finally {
+      if (worker) worker.terminate().catch(() => {});
+      ocrBusy = false; $('#btnOcr').disabled = false;
+    }
+  }
+  $('#btnOcr').onclick = () => runOcr();
   /** Läser PDF-sidans text, slår ihop ord på samma rad och letar radiatorbeteckningar. */
   async function readDesignations(page, vp) {
     const tc = await page.getTextContent();
@@ -653,6 +721,7 @@
       const ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
       ctx.drawImage(img, 0, 0, cv.width, cv.height);
       URL.revokeObjectURL(url); setPlanFromCanvas(cv, null);
+      runOcr([{ img: cv, k: 1 }]);
     };
     img.onerror = () => hint('Kunde inte läsa bilden.');
     img.src = url;

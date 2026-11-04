@@ -29,6 +29,11 @@ node build.js && node test/calc.test.js
 - PDF-ritningar via pdf.js (cdnjs), skala från ritningsskala 1:N.
 - Automatisk avläsning av radiatorbeteckningar (t.ex. "MR 59-20", "2xMP2 44/16") ur PDF:ens text. Kopplas till rum när rummet ritas.
 
+## Version 4
+- Beteckningsformat "sektioner-höjd-serie" (t.ex. "52-44-MP") som på äldre ritningar.
+- OCR med tesseract.js (jsdelivr) för inskannade PDF:er och bilder: två pass (planbild + skarpare rendering) slås ihop. Knappen "Läs beteckningar" kör om avläsningen.
+- Beteckningar utanför fasaden kopplas till närmaste rum inom 4 m (streckad linje visar kopplingen).
+
 ## Planerat
 - Automatisk rumsidentifiering från planritning (bildanalys).
-- OCR för inskannade ritningar, flera plan, ventilförinställning per ventilfabrikat, rörförluster/Δp per krets.
+- Flera plan, ventilförinställning per ventilfabrikat, rörförluster/Δp per krets.
