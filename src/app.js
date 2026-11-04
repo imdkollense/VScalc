@@ -754,6 +754,32 @@
   const TESS = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/';
   const TESS_LANG = 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng@1.0.0/4.0.0_best_int';
   let ocrBusy = false, ocrCancel = null;
+  /** OCR-filer: först de som ligger bredvid appen (ocr/), annars CDN. */
+  function ocrSources() {
+    const out = [];
+    try {
+      const local = new URL('ocr/', document.baseURI).href;
+      out.push({ name: 'lokalt', script: local + 'tesseract.min.js', opts: { workerPath: local + 'worker.min.js', corePath: local, langPath: local.replace(/\/$/, ''), workerBlobURL: false } });
+    } catch (e) { /* ingen bas-URL */ }
+    out.push({ name: 'CDN', script: TESS + 'tesseract.min.js', opts: { workerPath: TESS + 'worker.min.js', langPath: TESS_LANG } });
+    return out;
+  }
+  async function startOcrWorker(guard, logger) {
+    const errs = [];
+    for (const src of ocrSources()) {
+      let step = 'laddar skript';
+      try {
+        if (!window.Tesseract) await guard(loadScript(src.script), 30000, 'Skriptet');
+        step = 'startar';
+        return await guard(window.Tesseract.createWorker('eng', 1, Object.assign({ gzip: true, logger, errorHandler: () => {} }, src.opts)), src.name === 'lokalt' ? 60000 : 90000, 'Starten');
+      } catch (e) {
+        if (e && e.message === 'avbruten') throw e;
+        errs.push(`${src.name}: ${step} – ${(e && e.message) || e}`);
+        if (src.name === 'lokalt') { try { delete window.Tesseract; } catch (x) { window.Tesseract = undefined; } }
+      }
+    }
+    throw new Error(errs.join('; '));
+  }
   /** Textigenkänning på ritningsbilden; lägger till radiatorer för hittade beteckningar. */
   async function runOcr(sources) {
     if (ocrBusy) { if (ocrCancel) ocrCancel(); return; }
@@ -765,11 +791,7 @@
     const guard = (p, ms, what) => Promise.race([withTimeout(p, ms, what), cancelP]);
     try {
       hint('Läser av radiatorbeteckningar med textigenkänning … laddar OCR (första gången kan ta en stund).');
-      if (!window.Tesseract) await guard(loadScript(TESS + 'tesseract.min.js'), 30000, 'Att ladda textigenkänningen');
-      worker = await guard(window.Tesseract.createWorker('eng', 1, {
-        workerPath: TESS + 'worker.min.js', langPath: TESS_LANG, gzip: true,
-        logger: m => { if (m.status === 'recognizing text') hint(`Läser av radiatorbeteckningar … ${Math.round((pass + m.progress) / sources.length * 100)} % (du kan rita under tiden)`); },
-      }), 120000, 'Att starta textigenkänningen');
+      worker = await startOcrWorker(guard, m => { if (m.status === 'recognizing text') hint(`Läser av radiatorbeteckningar … ${Math.round((pass + m.progress) / sources.length * 100)} % (du kan rita under tiden)`); });
       await worker.setParameters({ tessedit_pageseg_mode: '11' }); // gles text, som på ritningar
       const found = [], airs = [];
       for (const src of sources) {

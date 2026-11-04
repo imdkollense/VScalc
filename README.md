@@ -10,7 +10,7 @@ Webbapp (ren HTML/JS, ingen server) för att beräkna effektbehov per rum vid DV
 - `test/calc.test.js` – enhetstester.
 
 ```
-node build.js && node test/calc.test.js
+npm install && node build.js && node test/calc.test.js
 ```
 Öppna `dist/vscalc.html` direkt i webbläsaren.
 
@@ -34,6 +34,9 @@ node build.js && node test/calc.test.js
 - OCR med tesseract.js (jsdelivr) för inskannade PDF:er och bilder: två pass (planbild + skarpare rendering) slås ihop. Knappen "Läs beteckningar" kör om avläsningen.
 - Beteckningar utanför fasaden kopplas till närmaste rum inom 4 m (streckad linje visar kopplingen) och räknas om när fler rum ritas.
 - Till- och frånluft per rum (m³/h). "+" = uteluftsdon (uteluft = frånluften), "−" = ingen tilluft (överluft), tal = mekanisk tilluft. Etiketter som "+/45" och "-/80" läses av från ritningen och fylls i när rummet ritas. Infiltration läggs till separat.
+
+## Version 5
+- OCR-filerna (tesseract.js, språkdata) publiceras bredvid appen i `ocr/` (kopieras av `build.js` från node_modules efter `npm install`). Appen provar dem först och faller tillbaka på CDN, så textigenkänningen fungerar även där CDN eller blob-workers är blockerade.
 
 ## Planerat
 - Automatisk rumsidentifiering från planritning (bildanalys).
