@@ -48,6 +48,7 @@ main { padding: 16px; }
 .rad { fill: var(--accent); stroke: #fff; stroke-width: 1; vector-effect: non-scaling-stroke; cursor: pointer; }
 .rad.unassigned { stroke: var(--accent); stroke-dasharray: 3 2; fill-opacity: .45; stroke-width: 1.5; }
 .rad.incomplete { fill: var(--warn); }
+.radlink { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; pointer-events: none; }
 .draft { fill: none; stroke: var(--accent); stroke-width: 2; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; }
 .vertex { fill: var(--accent); }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }

@@ -71,3 +71,18 @@ console.log('Alla tester OK');
   assert(b.perRad[0].overRef && !b.sufficient, 'över referens');
   console.log('Kontroller OK');
 }
+{
+  const db2 = C.parseRadiatorCsv(require('fs').readFileSync(__dirname + '/../data/radiatorer.csv', 'utf8'));
+  const f = t => C.findDesignations(t, db2).map(x => `${x.count}|${x.dbId}|${x.qty}`);
+  assert.deepStrictEqual(f('Bv 52-44 - MP   24 - 44 - MP'), ['1|mp-44|52', '1|mp-44|24']);
+  assert.deepStrictEqual(f('10-59-MP Vd 10'), ['1|mp-59|10']);
+  assert.deepStrictEqual(f('28 – 74 — MP'), ['1|mp-74|28']);
+  assert.deepStrictEqual(f('22-30-MP2'), ['1|mp2-30|22']);
+  assert.deepStrictEqual(f('18-44-MP'), ['1|mp-44|18']);
+  console.log('Äldre format OK');
+}
+{
+  const q = C.nearestOnPolygon({ x: 2, y: -3 }, [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }]);
+  near(q.d, 3, 1e-9, 'avstånd'); near(q.x, 2, 1e-9, 'x'); near(q.y, 0, 1e-9, 'y');
+  console.log('Geometri OK');
+}
