@@ -83,14 +83,41 @@
     const bridges = transmission * num(s.thermalBridge, 0);
     if (bridges > 0) parts.push({ key: 'kb', label: 'Köldbryggor', w: bridges });
 
-    const n = num(room.airChanges, s.airChanges);
     const volume = A * h;
-    const flowLs = n * volume / 3.6;
-    const vent = RHO_CP_AIR * flowLs * dT * (1 - num(s.heatRecovery, 0));
-    parts.push({ key: 'vent', label: 'Ventilation/infiltration', flowLs, w: vent });
+    const air = outdoorAir(room, s, volume);
+    if (air.ventLs > 0) parts.push({ key: 'vent', label: air.label, flowLs: air.ventLs, w: RHO_CP_AIR * air.ventLs * dT * (1 - air.recovery) });
+    if (air.infLs > 0) parts.push({ key: 'inf', label: air.ventLs || air.overflow ? 'Infiltration' : 'Ventilation/infiltration', flowLs: air.infLs, w: RHO_CP_AIR * air.infLs * dT });
 
     const total = parts.reduce((t, p) => t + p.w, 0);
     return { total, parts, dT, volume, exteriorWallArea: wallA, windowArea: winA };
+  }
+
+  /**
+   * Uteluft som värms i rummet. room.supply: tilluft m³/h, '+' (uteluftsdon – uteluft = frånluften),
+   * '-' (ingen tilluft, överluft från andra rum) eller tomt. room.exhaust: frånluft m³/h.
+   * Utan angivna flöden används luftomsättning (oms/h) som tidigare.
+   */
+  function outdoorAir(room, s, volume) {
+    const sup = String(room.supply ?? '').trim(), exh = num(room.exhaust, 0);
+    const supNum = num(sup.replace(',', '.'), NaN);
+    const given = sup !== '' || exh > 0;
+    if (!given) return { ventLs: 0, infLs: num(room.airChanges, s.airChanges) * volume / 3.6, recovery: 0 };
+    const infLs = num(s.infiltration, 0) * volume / 3.6;
+    if (isFinite(supNum)) return { ventLs: supNum / 3.6, infLs, recovery: num(s.heatRecovery, 0), label: `Tilluft ${supNum} m³/h` };
+    if (sup === '-' || sup === '–') return { ventLs: 0, infLs, recovery: 0, overflow: true };
+    return { ventLs: exh / 3.6, infLs, recovery: 0, label: `Uteluft via uteluftsdon ${exh} m³/h` }; // '+' eller tomt med frånluft
+  }
+
+  /** Hittar luftflödesangivelser "tilluft/frånluft" som "+/45", "-/80", "100/80". */
+  function findAirflows(text) {
+    const re = /(?<![A-Za-z0-9\/])([+\-–]|\d{1,3})\s*\/\s*(\d{1,3})(?![\d\/])/g;
+    const out = [];
+    let m;
+    while ((m = re.exec(text))) {
+      const sup = m[1] === '–' ? '-' : m[1];
+      out.push({ index: m.index, length: m[0].length, raw: m[0], supply: sup, exhaust: parseInt(m[2], 10) });
+    }
+    return out;
   }
 
   // ---------- Radiatorer ----------
@@ -277,5 +304,5 @@
   function num(v, d) { const x = parseFloat(v); return isFinite(x) ? x : d; }
 
   return { polygonArea, dist, pointInPolygon, nearestOnPolygon, roomHeatLoss, lmtd, meanDiff, nominalPower, radiatorOutput,
-    requiredFlow, requiredTempsAtDt, flowFor, valveSetting, RADV_PURE, kv, roomBalance, parseRadiatorCsv, findDesignations, WATER_KJ_PER_LK };
+    requiredFlow, requiredTempsAtDt, flowFor, valveSetting, RADV_PURE, kv, roomBalance, parseRadiatorCsv, findDesignations, findAirflows, outdoorAir, WATER_KJ_PER_LK };
 });

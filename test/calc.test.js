@@ -86,3 +86,12 @@ console.log('Alla tester OK');
   near(q.d, 3, 1e-9, 'avstånd'); near(q.x, 2, 1e-9, 'x'); near(q.y, 0, 1e-9, 'y');
   console.log('Geometri OK');
 }
+{
+  const s = { airChanges: 0.5, infiltration: 0.1, heatRecovery: 0.5 };
+  near(C.outdoorAir({ supply: '+', exhaust: 45 }, s, 30).ventLs, 12.5, 1e-9, '+/45');
+  assert.strictEqual(C.outdoorAir({ supply: '-', exhaust: 80 }, s, 30).ventLs, 0);
+  const t = C.outdoorAir({ supply: '100', exhaust: 80 }, s, 30); near(t.ventLs, 100 / 3.6, 1e-9, 'till'); assert.strictEqual(t.recovery, 0.5);
+  near(C.outdoorAir({}, s, 36).infLs, 5, 1e-9, 'oms/h');
+  assert.deepStrictEqual(C.findAirflows('KÖK -/80 VARDAGSRUM +/90 x 100/33 MP2 44/16').map(a => a.supply + '|' + a.exhaust), ['-|80', '+|90', '100|33', '44|16']);
+  console.log('Luftflöden OK');
+}
