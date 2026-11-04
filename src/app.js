@@ -111,11 +111,34 @@
     return best ? { x: best.x, y: best.y } : { x: p.x, y: p.y };
   }
 
+  // Ritningen ligger i ett eget lager som bara byggs om när bilden ändras; allt annat ritas om i överlagret.
+  // (Att återskapa en stor <image> vid varje omritning avkodar bilden på nytt och gör appen seg.)
+  let baseKey = null, baseLayer = null, overlay = null, blobUrl = null;
+  function ensureLayers() {
+    const key = P.plan.image ? 'img:' + P.plan.image.length + ':' + P.plan.image.slice(-64) : `grid:${P.plan.w}:${P.plan.h}:${P.plan.pxPerM}`;
+    if (key === baseKey && baseLayer && baseLayer.parentNode === svg) return;
+    baseKey = key;
+    svg.innerHTML = '';
+    baseLayer = el('g', {}, svg);
+    overlay = el('g', {}, svg);
+    if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
+    if (P.plan.image) {
+      let href = P.plan.image;
+      try { blobUrl = URL.createObjectURL(dataUrlToBlob(P.plan.image)); href = blobUrl; } catch (e) { /* använd data-URL */ }
+      el('image', { href, x: 0, y: 0, width: P.plan.w, height: P.plan.h }, baseLayer);
+    } else drawGrid(baseLayer);
+  }
+  function dataUrlToBlob(u) {
+    const [head, b64] = u.split(',');
+    const bin = atob(b64), arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: (head.match(/data:([^;]+)/) || [])[1] || 'image/jpeg' });
+  }
   function draw() {
     svg.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
-    svg.innerHTML = '';
-    if (P.plan.image) el('image', { href: P.plan.image, x: 0, y: 0, width: P.plan.w, height: P.plan.h }, svg);
-    else drawGrid();
+    ensureLayers();
+    overlay.innerHTML = '';
+    { const svg = overlay; // allt nedan ritas i överlagret
     const results = new Map(computeAll().map(r => [r.room.id, r]));
     for (const room of P.rooms) {
       const g = el('g', {}, svg);
@@ -166,13 +189,14 @@
       draft.forEach(p => el('circle', { cx: p.x, cy: p.y, r: 4 * pxPerScreen(), class: 'vertex' }, svg));
     }
     scalePts.forEach(p => el('circle', { cx: p.x, cy: p.y, r: 5 * pxPerScreen(), class: 'vertex' }, svg));
+    }
     $('#scaleInfo').textContent = `Skala: ${fmt(P.plan.pxPerM, 1)} px/m`;
   }
-  function drawGrid() {
+  function drawGrid(g) {
     const k = P.plan.pxPerM;
-    el('rect', { x: 0, y: 0, width: P.plan.w, height: P.plan.h, fill: 'var(--panel)' }, svg);
-    for (let x = 0; x <= P.plan.w; x += k) el('line', { x1: x, y1: 0, x2: x, y2: P.plan.h, stroke: 'var(--line)', 'vector-effect': 'non-scaling-stroke' }, svg);
-    for (let y = 0; y <= P.plan.h; y += k) el('line', { x1: 0, y1: y, x2: P.plan.w, y2: y, stroke: 'var(--line)', 'vector-effect': 'non-scaling-stroke' }, svg);
+    el('rect', { x: 0, y: 0, width: P.plan.w, height: P.plan.h, fill: 'var(--panel)' }, g);
+    for (let x = 0; x <= P.plan.w; x += k) el('line', { x1: x, y1: 0, x2: x, y2: P.plan.h, stroke: 'var(--line)', 'vector-effect': 'non-scaling-stroke' }, g);
+    for (let y = 0; y <= P.plan.h; y += k) el('line', { x1: 0, y1: y, x2: P.plan.w, y2: y, stroke: 'var(--line)', 'vector-effect': 'non-scaling-stroke' }, g);
   }
   function centroid(pts) {
     let x = 0, y = 0; pts.forEach(p => { x += p.x; y += p.y; });
@@ -224,7 +248,7 @@
       draft = [rectStart, { x: p.x, y: rectStart.y }, p, { x: rectStart.x, y: p.y }, rectStart]; draw();
     } else if (mode === 'room' && draft.length) {
       const p = snap(svgPoint(ev));
-      draw(); el('line', { x1: draft[draft.length - 1].x, y1: draft[draft.length - 1].y, x2: p.x, y2: p.y, class: 'draft' }, svg);
+      draw(); el('line', { x1: draft[draft.length - 1].x, y1: draft[draft.length - 1].y, x2: p.x, y2: p.y, class: 'draft' }, overlay);
     }
   });
   svg.addEventListener('pointerup', async ev => {
@@ -590,14 +614,18 @@
     return new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = src; sc.onload = res; sc.onerror = () => rej(new Error('Kunde inte ladda ' + src)); document.head.appendChild(sc); });
   }
   const PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+  function withTimeout(promise, ms, what) {
+    let t;
+    return Promise.race([promise, new Promise((_, rej) => { t = setTimeout(() => rej(new Error(what + ' tog för lång tid')), ms); })]).finally(() => clearTimeout(t));
+  }
   async function loadPdf(file) {
     hint('Läser PDF …');
     if (!window.pdfjsLib) {
-      await loadScript(PDFJS + 'pdf.min.js');
+      await withTimeout(loadScript(PDFJS + 'pdf.min.js'), 30000, 'Att ladda PDF-läsaren');
       window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'pdf.worker.min.js';
     }
     const data = new Uint8Array(await file.arrayBuffer());
-    const doc = await window.pdfjsLib.getDocument({ data }).promise;
+    const doc = await withTimeout(window.pdfjsLib.getDocument({ data }).promise, 60000, 'Att öppna PDF:en');
     let pageNo = 1;
     if (doc.numPages > 1) {
       const a = await ask(`PDF:en har ${doc.numPages} sidor. Vilken sida är planritningen?`, '1');
@@ -622,7 +650,9 @@
     }
     setPlanFromCanvas(cv, pxPerM);
     if (found.length) hint(`${found.length} radiatorbeteckningar avlästa ur ritningen (orange markeringar). Kontrollera dem – klicka på en markering för att ändra. ` + $('#hint').textContent);
-    else {
+    else if (matchMedia('(pointer: coarse)').matches) {
+      await runOcr([{ img: cv, k: 1 }]); // surfplatta/telefon: ett pass för att spara minne
+    } else {
       // Inskannad ritning utan textlager: OCR på planbilden och på en skarpare rendering, resultaten slås ihop
       const k = 1.6, vpHi = page.getViewport({ scale: scale * k });
       const hi = document.createElement('canvas'); hi.width = Math.round(vpHi.width); hi.height = Math.round(vpHi.height);
@@ -658,25 +688,27 @@
   // ---------- OCR (inskannade ritningar) ----------
   const TESS = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/';
   const TESS_LANG = 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng@1.0.0/4.0.0_best_int';
-  let ocrBusy = false;
+  let ocrBusy = false, ocrCancel = null;
   /** Textigenkänning på ritningsbilden; lägger till radiatorer för hittade beteckningar. */
   async function runOcr(sources) {
-    if (ocrBusy) return;
+    if (ocrBusy) { if (ocrCancel) ocrCancel(); return; }
     if (!P.plan.image && !sources) { hint('Ladda en ritning först.'); return; }
     sources = sources || [{ img: P.plan.image, k: 1 }];
-    ocrBusy = true; $('#btnOcr').disabled = true;
-    let worker = null, pass = 0;
+    ocrBusy = true; $('#btnOcr').textContent = 'Avbryt avläsning';
+    let worker = null, pass = 0, cancelled = false;
+    const cancelP = new Promise((_, rej) => { ocrCancel = () => { cancelled = true; rej(new Error('avbruten')); }; });
+    const guard = (p, ms, what) => Promise.race([withTimeout(p, ms, what), cancelP]);
     try {
       hint('Läser av radiatorbeteckningar med textigenkänning … laddar OCR (första gången kan ta en stund).');
-      if (!window.Tesseract) await loadScript(TESS + 'tesseract.min.js');
-      worker = await window.Tesseract.createWorker('eng', 1, {
+      if (!window.Tesseract) await guard(loadScript(TESS + 'tesseract.min.js'), 30000, 'Att ladda textigenkänningen');
+      worker = await guard(window.Tesseract.createWorker('eng', 1, {
         workerPath: TESS + 'worker.min.js', langPath: TESS_LANG, gzip: true,
-        logger: m => { if (m.status === 'recognizing text') hint(`Läser av radiatorbeteckningar … ${Math.round((pass + m.progress) / sources.length * 100)} %`); },
-      });
+        logger: m => { if (m.status === 'recognizing text') hint(`Läser av radiatorbeteckningar … ${Math.round((pass + m.progress) / sources.length * 100)} % (du kan rita under tiden)`); },
+      }), 120000, 'Att starta textigenkänningen');
       await worker.setParameters({ tessedit_pageseg_mode: '11' }); // gles text, som på ritningar
       const found = [], airs = [];
       for (const src of sources) {
-      const { data } = await worker.recognize(src.img);
+      const { data } = await guard(worker.recognize(src.img), 300000, 'Textigenkänningen');
       pass++;
       for (const line0 of data.lines || []) {
         const line = { text: line0.text, bbox: { x0: line0.bbox.x0 / src.k, x1: line0.bbox.x1 / src.k, y0: line0.bbox.y0 / src.k, y1: line0.bbox.y1 / src.k } };
@@ -701,10 +733,11 @@
         ? `${found.length} radiatorbeteckningar avlästa med textigenkänning (orange). Kontrollera dem mot ritningen – handskrivna noteringar läses inte. Klicka på en markering för att ändra.`
         : 'Inga radiatorbeteckningar hittades med textigenkänning. Placera radiatorerna manuellt.') + airTxt);
     } catch (e) {
-      hint('Textigenkänningen kunde inte köras här (' + (e && e.message || e) + '). Placera radiatorerna manuellt.');
+      hint(cancelled ? 'Avläsningen avbröts. Du kan köra den igen med "Läs beteckningar".'
+        : 'Textigenkänningen kunde inte köras här (' + (e && e.message || e) + '). Placera radiatorerna manuellt.');
     } finally {
-      if (worker) worker.terminate().catch(() => {});
-      ocrBusy = false; $('#btnOcr').disabled = false;
+      if (worker) { try { worker.terminate(); } catch (e) { /* redan stoppad */ } }
+      ocrBusy = false; ocrCancel = null; $('#btnOcr').textContent = 'Läs beteckningar';
     }
   }
   $('#btnOcr').onclick = () => runOcr();
