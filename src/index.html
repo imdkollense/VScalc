@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VScalc injustering</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>VS<span>calc</span></h1>
+  <nav id="tabs">
+    <button data-view="plan" class="active">Ritning</button>
+    <button data-view="results">Resultat</button>
+    <button data-view="settings">Indata</button>
+    <button data-view="db">Radiatordatabas</button>
+  </nav>
+  <div class="spacer"></div>
+  <button class="btn" id="btnExport">Spara projekt</button>
+  <label class="btn">Öppna projekt<input type="file" id="fileProject" accept=".json" hidden></label>
+  <button class="btn danger" id="btnNew">Nytt</button>
+</header>
+
+<main>
+  <!-- RITNING -->
+  <section class="view active" id="v-plan">
+    <div class="drawing">
+      <div>
+        <div class="toolbar">
+          <label class="btn">Ladda planritning<input type="file" id="fileImage" accept="application/pdf,.pdf,image/*" hidden></label>
+          <button class="btn" data-mode="pan">Flytta</button>
+          <button class="btn" data-mode="scale">Skala</button>
+          <button class="btn" data-mode="room">Rita rum</button>
+          <button class="btn" data-mode="rect">Rektangel</button>
+          <button class="btn" data-mode="edge">Ytterväggar</button>
+          <button class="btn" data-mode="rad">Placera radiator</button>
+          <button class="btn" id="btnFit">Anpassa</button>
+          <span class="note" id="scaleInfo"></span>
+        </div>
+        <div class="hint" id="hint"></div>
+        <div id="canvasWrap"><svg id="plan"></svg></div>
+      </div>
+      <aside class="panel" id="sidePanel"></aside>
+    </div>
+  </section>
+
+  <!-- RESULTAT -->
+  <section class="view" id="v-results">
+    <div class="kpi" id="kpi"></div>
+    <div class="toolbar noprint">
+      <button class="btn" id="btnCsv">Exportera CSV</button>
+      <button class="btn" onclick="window.print()">Skriv ut</button>
+    </div>
+    <div class="panel scroll"><table id="resTable"></table></div>
+    <p class="note" id="resNote"></p>
+  </section>
+
+  <!-- INDATA -->
+  <section class="view" id="v-settings"><div class="settings" id="settingsForm"></div></section>
+
+  <!-- DATABAS -->
+  <section class="view" id="v-db">
+    <div class="toolbar">
+      <label class="btn">Importera CSV<input type="file" id="fileCsv" accept=".csv,.txt" hidden></label>
+      <label><input type="checkbox" id="csvReplace" checked> Ersätt befintlig lista</label>
+      <button class="btn" id="btnDbExport">Exportera CSV</button>
+      <button class="btn" id="btnDbReset">Återställ standardlista</button>
+    </div>
+    <p class="note">CSV-kolumner (semikolon): <code>id; namn; typ; fabrikat; höjd; längd; effekt; enhet; normtemp; exponent</code>. <b>enhet</b> = <code>st</code> (hel radiator), <code>sektion</code> (effekt per sektion) eller <code>m</code> (effekt per meter). <b>normtemp</b> = fram/retur/rum som effekten anges vid, t.ex. <code>80/60/20</code>.</p>
+    <div class="panel scroll"><table id="dbTable"></table></div>
+  </section>
+</main>
+
+<dialog id="radDialog">
+  <form method="dialog" id="radForm">
+    <h2 style="margin-top:0">Välj radiator</h2>
+    <p class="note" id="radRoom"></p>
+    <label class="f" style="grid-template-columns:1fr">Sök<input id="radSearch" placeholder="t.ex. kolonn, 600"></label>
+    <select id="radSelect" size="8" style="margin:6px 0"></select>
+    <label class="f"><span id="radQtyLabel">Antal</span><input id="radQty" type="number" step="any" min="0" value="1"></label>
+    <label class="f">Antal installerade (likadana)<input id="radCount" type="number" step="1" min="1" value="1"></label>
+    <p class="note" id="radInfo"></p>
+    <div class="toolbar" style="justify-content:flex-end;margin:12px 0 0">
+      <button class="btn danger" value="del" id="radDel" hidden>Ta bort</button>
+      <div class="spacer"></div>
+      <button class="btn" value="cancel">Avbryt</button>
+      <button class="btn active" value="ok" id="radOk">Placera</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="askDialog">
+  <form method="dialog">
+    <p id="askText" style="margin-top:0"></p>
+    <input id="askInput">
+    <div class="toolbar" style="justify-content:flex-end;margin:12px 0 0">
+      <button class="btn" value="cancel">Avbryt</button>
+      <button class="btn active" value="ok">OK</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="calc.js"></script>
+<script src="default-db.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
