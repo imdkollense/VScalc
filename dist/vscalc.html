@@ -159,7 +159,7 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
 </main>
 
 <dialog id="radDialog">
-  <form method="dialog" id="radForm">
+  <div class="dialog-body" id="radForm">
     <h2 style="margin-top:0">Välj radiator</h2>
     <p class="note" id="radRoom"></p>
     <label class="f" style="grid-template-columns:1fr">Sök<input id="radSearch" placeholder="t.ex. kolonn, 600"></label>
@@ -168,23 +168,23 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
     <label class="f">Antal installerade (likadana)<input id="radCount" type="number" step="1" min="1" value="1"></label>
     <p class="note" id="radInfo"></p>
     <div class="toolbar" style="justify-content:flex-end;margin:12px 0 0">
-      <button class="btn danger" value="del" id="radDel" hidden>Ta bort</button>
+      <button type="button" class="btn danger" value="del" id="radDel" hidden>Ta bort</button>
       <div class="spacer"></div>
-      <button class="btn" value="cancel">Avbryt</button>
-      <button class="btn active" value="ok" id="radOk">Placera</button>
+      <button type="button" class="btn" value="cancel">Avbryt</button>
+      <button type="button" class="btn active" value="ok" id="radOk">Placera</button>
     </div>
-  </form>
+  </div>
 </dialog>
 
 <dialog id="askDialog">
-  <form method="dialog">
+  <div class="dialog-body">
     <p id="askText" style="margin-top:0"></p>
     <input id="askInput">
     <div class="toolbar" style="justify-content:flex-end;margin:12px 0 0">
-      <button class="btn" value="cancel">Avbryt</button>
-      <button class="btn active" value="ok">OK</button>
+      <button type="button" class="btn" value="cancel">Avbryt</button>
+      <button type="button" class="btn active" value="ok">OK</button>
     </div>
-  </form>
+  </div>
 </dialog>
 
 <script>
@@ -871,6 +871,18 @@ window.VSCALC_DEFAULT_CSV = "id;namn;typ;fabrikat;höjd;längd;effekt;enhet;norm
   // ---------- Dialoger ----------
   // Pekskärm: en dialog som öppnas mitt i en fingergest kan tappa första trycket (inget click skapas).
   // Stäng därför direkt på pointerup för knappar i dialoger.
+  // Dialogerna använder inte <form method="dialog">: i den publicerade appens sandlåda (utan allow-forms)
+  // blockeras formulärsändning, så OK/Avbryt gjorde ingenting. Knapparna stänger dialogen själva.
+  document.querySelectorAll('dialog button[value]').forEach(btn => {
+    btn.addEventListener('click', () => { const d = btn.closest('dialog'); if (d && d.open) d.close(btn.value); });
+  });
+  // Enter i ett textfält = OK
+  document.querySelectorAll('dialog input').forEach(inp => inp.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const d = inp.closest('dialog'), ok = d && d.querySelector('button[value="ok"]');
+    if (d && d.open && ok) d.close('ok');
+  }));
   document.querySelectorAll('dialog button[value]').forEach(btn => {
     let downOnBtn = false;
     btn.addEventListener('pointerdown', e => { downOnBtn = e.pointerType === 'touch'; });
@@ -926,6 +938,7 @@ window.VSCALC_DEFAULT_CSV = "id;namn;typ;fabrikat;höjd;längd;effekt;enhet;norm
   }
   $('#radSearch').addEventListener('input', () => fillRadSelect());
   $('#radSelect').addEventListener('change', updateRadInfo);
+  $('#radSelect').addEventListener('dblclick', () => { if ($('#radSelect').value) $('#radDialog').close('ok'); });
   $('#radQty').addEventListener('input', updateRadInfo);
   $('#radCount').addEventListener('input', updateRadInfo);
   $('#radDialog').addEventListener('close', () => {

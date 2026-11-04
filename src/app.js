@@ -367,6 +367,18 @@
   // ---------- Dialoger ----------
   // Pekskärm: en dialog som öppnas mitt i en fingergest kan tappa första trycket (inget click skapas).
   // Stäng därför direkt på pointerup för knappar i dialoger.
+  // Dialogerna använder inte <form method="dialog">: i den publicerade appens sandlåda (utan allow-forms)
+  // blockeras formulärsändning, så OK/Avbryt gjorde ingenting. Knapparna stänger dialogen själva.
+  document.querySelectorAll('dialog button[value]').forEach(btn => {
+    btn.addEventListener('click', () => { const d = btn.closest('dialog'); if (d && d.open) d.close(btn.value); });
+  });
+  // Enter i ett textfält = OK
+  document.querySelectorAll('dialog input').forEach(inp => inp.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const d = inp.closest('dialog'), ok = d && d.querySelector('button[value="ok"]');
+    if (d && d.open && ok) d.close('ok');
+  }));
   document.querySelectorAll('dialog button[value]').forEach(btn => {
     let downOnBtn = false;
     btn.addEventListener('pointerdown', e => { downOnBtn = e.pointerType === 'touch'; });
@@ -422,6 +434,7 @@
   }
   $('#radSearch').addEventListener('input', () => fillRadSelect());
   $('#radSelect').addEventListener('change', updateRadInfo);
+  $('#radSelect').addEventListener('dblclick', () => { if ($('#radSelect').value) $('#radDialog').close('ok'); });
   $('#radQty').addEventListener('input', updateRadInfo);
   $('#radCount').addEventListener('input', updateRadInfo);
   $('#radDialog').addEventListener('close', () => {

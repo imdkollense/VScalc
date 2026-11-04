@@ -75,7 +75,7 @@
 </main>
 
 <dialog id="radDialog">
-  <form method="dialog" id="radForm">
+  <div class="dialog-body" id="radForm">
     <h2 style="margin-top:0">Välj radiator</h2>
     <p class="note" id="radRoom"></p>
     <label class="f" style="grid-template-columns:1fr">Sök<input id="radSearch" placeholder="t.ex. kolonn, 600"></label>
@@ -84,23 +84,23 @@
     <label class="f">Antal installerade (likadana)<input id="radCount" type="number" step="1" min="1" value="1"></label>
     <p class="note" id="radInfo"></p>
     <div class="toolbar" style="justify-content:flex-end;margin:12px 0 0">
-      <button class="btn danger" value="del" id="radDel" hidden>Ta bort</button>
+      <button type="button" class="btn danger" value="del" id="radDel" hidden>Ta bort</button>
       <div class="spacer"></div>
-      <button class="btn" value="cancel">Avbryt</button>
-      <button class="btn active" value="ok" id="radOk">Placera</button>
+      <button type="button" class="btn" value="cancel">Avbryt</button>
+      <button type="button" class="btn active" value="ok" id="radOk">Placera</button>
     </div>
-  </form>
+  </div>
 </dialog>
 
 <dialog id="askDialog">
-  <form method="dialog">
+  <div class="dialog-body">
     <p id="askText" style="margin-top:0"></p>
     <input id="askInput">
     <div class="toolbar" style="justify-content:flex-end;margin:12px 0 0">
-      <button class="btn" value="cancel">Avbryt</button>
-      <button class="btn active" value="ok">OK</button>
+      <button type="button" class="btn" value="cancel">Avbryt</button>
+      <button type="button" class="btn active" value="ok">OK</button>
     </div>
-  </form>
+  </div>
 </dialog>
 
 <script src="calc.js"></script>
