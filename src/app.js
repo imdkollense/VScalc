@@ -759,7 +759,9 @@
     const out = [];
     try {
       const local = new URL('ocr/', document.baseURI).href;
-      out.push({ name: 'lokalt', script: local + 'tesseract.min.js', opts: { workerPath: local + 'worker.min.js', corePath: local, langPath: local.replace(/\/$/, ''), workerBlobURL: false } });
+      // Språkdata ligger som .wasm-fil (gzip-innehåll) eftersom artifact-värden bara serverar vissa filtyper.
+      // (tesseract hämtar langPath + '/eng.traineddata.gz'; frågesträngen gör att filen ovan hämtas)
+      out.push({ name: 'lokalt', script: local + 'tesseract.min.js', opts: { workerPath: local + 'worker.min.js', corePath: local, langPath: local + 'eng.traineddata.wasm?f=', workerBlobURL: false } });
     } catch (e) { /* ingen bas-URL */ }
     out.push({ name: 'CDN', script: TESS + 'tesseract.min.js', opts: { workerPath: TESS + 'worker.min.js', langPath: TESS_LANG } });
     return out;

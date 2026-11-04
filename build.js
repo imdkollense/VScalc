@@ -19,7 +19,7 @@ const ocrFiles = {
   'worker.min.js': 'tesseract.js/dist/worker.min.js',
   'tesseract-core-lstm.wasm.js': 'tesseract.js-core/tesseract-core-lstm.wasm.js',
   'tesseract-core-simd-lstm.wasm.js': 'tesseract.js-core/tesseract-core-simd-lstm.wasm.js',
-  'eng.traineddata.gz': '@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz',
+  'eng.traineddata.wasm': '@tesseract.js-data/eng/4.0.0_best_int/eng.traineddata.gz',
 };
 if (fs.existsSync(nm('tesseract.js'))) {
   fs.mkdirSync(path.join(__dirname, 'dist/ocr'), { recursive: true });
